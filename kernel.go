@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"sync"
 )
 
-func InverseConvolution(img image.Image, kernel [][]float64, stride, dilation, padding []int) image.Image {
+//InverseConvolution does the reverse convolution operation per channel on an image.
+//This is kind of like the back propagation of an CNN.
+func InverseConvolution(img image.Image, kernel [][]float64, stride, dilation, padding []int, zeronegatives bool) image.Image {
 	if len(stride) != 2 || len(dilation) != 2 || len(padding) != 2 {
 		return nil
 	}
@@ -47,13 +50,38 @@ func InverseConvolution(img image.Image, kernel [][]float64, stride, dilation, p
 		}
 
 	}
-	return array3dtoimg(array3d)
+	return array3dtoimg(array3d, zeronegatives)
 
 }
-func floatarray3dtoimage(a [][][]float32, x, y int) image.Image {
-	return nil
+
+/*
+func NormalizeImage(img image.Image) image.Image {
+	imgarray:=imgto3darray(img)
+	max:=-9999999.0
+	min:=9999999.0
+	avg:=0.0
+	counter:=0 //im lazy
+	for i:=range imgarray{
+		for j:=range imgarray[0]{
+			for k:=range imgarray[0][0]{
+val:=imgarray[i][j][k]
+if min>val{
+	min=val
 }
-func Convolution(img image.Image, kernel [][]float64, stride, dilation, padding []int) image.Image {
+if max<val{
+	max=val
+}
+avg+=val
+counter++
+
+			}
+		}
+	}
+
+}
+*/
+//Convolution does the convolution operation per channel on an image. If the kernel is small and picture is small then don't bother setting the threads to big.
+func Convolution(img image.Image, kernel [][]float64, stride, dilation, padding []int, zeronegatives bool, threads int) image.Image {
 	if len(stride) != 2 || len(dilation) != 2 || len(padding) != 2 {
 		return nil
 	}
@@ -70,48 +98,52 @@ func Convolution(img image.Image, kernel [][]float64, stride, dilation, padding 
 	}
 	fmt.Println("Output", op)
 	arrayout := create3darray(op[0], op[1], 3)
-	//imgout := image.NewRGBA(image.Rect(0, 0, op[1], op[0]))
-
+	var wg sync.WaitGroup
 	for oh, xhps := 0, -padding[0]; oh < op[0]; oh, xhps = oh+1, xhps+stride[0] {
 
 		for ow, xwps := 0, -padding[1]; ow < op[1]; ow, xwps = ow+1, xwps+stride[1] {
-			var (
-				sr float64
-				sg float64
-				sb float64
-			)
-			for kh := 0; kh < len(kernel); kh++ {
-				xhpsd := kh*dilation[0] + xhps
-				for kw := 0; kw < len(kernel[kh]); kw++ {
-					xwpsd := kw*dilation[1] + xwps
-					if xwpsd >= 0 && xwpsd < x[1] && xhpsd >= 0 && xhpsd < x[0] {
-						r, g, b, _ := img.At(xwpsd, xhpsd).RGBA()
 
-						sr += (float64)(r) * kernel[kh][kw]
-						sg += (float64)(g) * kernel[kh][kw]
-						sb += (float64)(b) * kernel[kh][kw]
+			d1 := dilation[1]
+			d0 := dilation[0]
+			wg.Add(1)
+			go func(oh, ow, xhps, xwps, d0, d1 int) {
+				var (
+					sr float64
+					sg float64
+					sb float64
+				)
+				for kh := 0; kh < len(kernel); kh++ {
+					xhpsd := kh*d0 + xhps
+					for kw := 0; kw < len(kernel[kh]); kw++ {
+						xwpsd := kw*d1 + xwps
+						if xwpsd >= 0 && xwpsd < x[1] && xhpsd >= 0 && xhpsd < x[0] {
+							r, g, b, _ := img.At(xwpsd, xhpsd).RGBA()
+
+							sr += (float64)(r) * kernel[kh][kw]
+							sg += (float64)(g) * kernel[kh][kw]
+							sb += (float64)(b) * kernel[kh][kw]
+						}
+
 					}
 
 				}
 
+				arrayout[oh][ow][0] = sr
+				arrayout[oh][ow][1] = sg
+				arrayout[oh][ow][2] = sb
+				wg.Done()
+			}(oh, ow, xhps, xwps, d0, d1)
+			if ow%threads == threads-1 {
+				wg.Wait()
 			}
-			arrayout[oh][ow][0] = sr
-			arrayout[oh][ow][1] = sg
-			arrayout[oh][ow][2] = sb
-
-			/*
-				usr := (uint8)(sr / 257)
-				usg := (uint8)(sg / 257)
-				usb := (uint8)(sb / 257)
-				imgout.Set(ow, oh, color.RGBA{usr, usg, usb, 255})
-			*/
 		}
+		wg.Wait()
 
 	}
-	return array3dtoimg(arrayout)
+	return array3dtoimg(arrayout, zeronegatives)
 }
 
-func array3dtoimg(input [][][]float64) image.Image {
+func array3dtoimg(input [][][]float64, zeronegatives bool) image.Image {
 	y := len(input)
 	x := len(input[0])
 	c := len(input[0][0])
@@ -122,6 +154,11 @@ func array3dtoimg(input [][][]float64) image.Image {
 	for i := 0; i < y; i++ {
 		for j := 0; j < x; j++ {
 			for k := 0; k < c; k++ {
+				if zeronegatives {
+					if input[i][j][k] < 0 {
+						input[i][j][k] = 0
+					}
+				}
 				if min > input[i][j][k] {
 					min = input[i][j][k]
 				}
@@ -152,17 +189,55 @@ func array3dtoimg(input [][][]float64) image.Image {
 			}
 		}
 	}
-
-	imgout := image.NewRGBA(image.Rect(0, 0, x, y))
-	for i := 0; i < y; i++ {
-		for j := 0; j < x; j++ {
-			usr := (uint8)(input[i][j][0])
-			usg := (uint8)(input[i][j][1])
-			usb := (uint8)(input[i][j][2])
-			imgout.Set(j, i, color.RGBA{usr, usg, usb, 255})
+	switch len(input[0][0]) {
+	case 1:
+		imgout := image.NewRGBA(image.Rect(0, 0, x, y))
+		for i := 0; i < y; i++ {
+			for j := 0; j < x; j++ {
+				usr := (uint8)(input[i][j][0])
+				usg := (uint8)(input[i][j][0])
+				usb := (uint8)(input[i][j][0])
+				imgout.Set(j, i, color.RGBA{usr, usg, usb, 255})
+			}
 		}
+		return imgout
+	case 2:
+		imgout := image.NewRGBA(image.Rect(0, 0, x, y))
+		for i := 0; i < y; i++ {
+			for j := 0; j < x; j++ {
+				usr := (uint8)(input[i][j][0])
+				usg := (uint8)(input[i][j][1])
+				usb := (uint8)((input[i][j][0] + input[i][j][1]) / 2)
+				imgout.Set(j, i, color.RGBA{usr, usg, usb, 255})
+			}
+		}
+		return imgout
+	case 3:
+		imgout := image.NewRGBA(image.Rect(0, 0, x, y))
+		for i := 0; i < y; i++ {
+			for j := 0; j < x; j++ {
+				usr := (uint8)(input[i][j][0])
+				usg := (uint8)(input[i][j][1])
+				usb := (uint8)(input[i][j][2])
+				imgout.Set(j, i, color.RGBA{usr, usg, usb, 255})
+			}
+		}
+		return imgout
+	case 4:
+		imgout := image.NewRGBA(image.Rect(0, 0, x, y))
+		for i := 0; i < y; i++ {
+			for j := 0; j < x; j++ {
+				usr := (uint8)(input[i][j][0])
+				usg := (uint8)(input[i][j][1])
+				usb := (uint8)(input[i][j][2])
+				usa := (uint8)(input[i][j][3])
+				imgout.Set(j, i, color.RGBA{usr, usg, usb, usa})
+			}
+		}
+		return imgout
+
 	}
-	return imgout
+	return nil
 }
 func create3darray(y, x, c int) [][][]float64 {
 	out := make([][][]float64, y)
@@ -173,6 +248,21 @@ func create3darray(y, x, c int) [][][]float64 {
 		}
 	}
 	return out
+}
+func imgto3darray(img image.Image) [][][]float64 {
+	w := img.Bounds().Max.X
+	h := img.Bounds().Max.Y
+	array := create3darray(h, w, 3)
+	for i := 0; i < h; i++ {
+		for j := 0; j < w; j++ {
+			r, g, b, _ := img.At(w, h).RGBA()
+			array[i][j][0] = float64(r)
+			array[i][j][1] = float64(g)
+			array[i][j][2] = float64(b)
+		}
+	}
+	return array
+
 }
 func output(x, w, s, d, p int) (y int) {
 	return ((x + 2*p - ((w-1)*d + 1)) / s) + 1
