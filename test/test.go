@@ -62,10 +62,28 @@ var edge33 = [][]float64{
 	{-1, 8, -1},
 	{-1, -1, -1},
 }
+var lxe = [][]float64{
+	{1, 0, -1},
+	{2, 0, -2},
+	{1, 0, -1},
+}
+var lye = [][]float64{
+	{1, 2, 1},
+	{0, 0, 0},
+	{-1, -2, -1},
+}
 
 func main() {
 	//convertjpgtobmp("playground.jpg")
-	getconvpics("playground.jpg")
+	convvscroswithreverse("playground.bmp", lxe, false, true, 1)
+}
+
+func convvscroswithreverse(imagename string, karray [][]float64, reverse bool, zeronegs bool, threads int) {
+
+	convolution(imagename, "cvexample", karray, []int{1, 1}, []int{1, 1}, []int{1, 1}, false, zeronegs, true, threads)
+	convolution(imagename, "ccexample", karray, []int{1, 1}, []int{1, 1}, []int{1, 1}, false, zeronegs, false, threads)
+	convolution(imagename, "cvexamplerev", karray, []int{1, 1}, []int{1, 1}, []int{1, 1}, true, zeronegs, true, threads)
+	convolution(imagename, "ccexamplerev", karray, []int{1, 1}, []int{1, 1}, []int{1, 1}, true, zeronegs, false, threads)
 }
 
 func getconvpics(imagename string) {
@@ -73,6 +91,7 @@ func getconvpics(imagename string) {
 	//	dilation := []int{1, 1}
 	reverse := false
 	zeronegs := false
+	conv := false
 	threads := 16
 	/*
 		x := 7
@@ -82,15 +101,15 @@ func getconvpics(imagename string) {
 		//	dx, dy := (x-1)/(x1-1), (y-1)/(y1-1)
 		//	fmt.Println(bigedge)
 	*/
-	convolution(imagename, "stride2x2edge33", edge33, []int{2, 2}, []int{1, 1}, []int{1, 1}, reverse, zeronegs, threads)
-	convolution(imagename, "stride3x3edge33", edge33, []int{3, 3}, []int{1, 1}, []int{1, 1}, reverse, zeronegs, threads)
+	convolution(imagename, "stride2x2edge33", edge33, []int{2, 2}, []int{1, 1}, []int{1, 1}, reverse, zeronegs, conv, threads)
+	convolution(imagename, "stride3x3edge33", edge33, []int{3, 3}, []int{1, 1}, []int{1, 1}, reverse, zeronegs, conv, threads)
 	//	convolution(imagename, "edge99", edge99, stride, []int{1, 1}, []int{4, 4}, reverse, zeronegs, threads)
 	//convolution(imagename, "edge12x12", edge12x12, stride, []int{1, 1}, []int{5, 5}, reverse, zeronegs, threads)
-	convolution(imagename, "edge15x15", edge15x15, stride, []int{1, 1}, []int{7, 7}, reverse, zeronegs, threads)
-	convolution(imagename, "dilation11like33", edge33, stride, []int{1, 1}, []int{1, 1}, reverse, zeronegs, 1)
+	convolution(imagename, "edge15x15", edge15x15, stride, []int{1, 1}, []int{7, 7}, reverse, zeronegs, conv, threads)
+	convolution(imagename, "dilation11like33", edge33, stride, []int{1, 1}, []int{1, 1}, reverse, zeronegs, conv, 1)
 	//convolution(imagename, "dilation44,like99,", edge33, stride, []int{4, 4}, []int{4, 4}, reverse, zeronegs, 1)
 	//	convolution(imagename, "dilation55,like11x11,", edge33, stride, []int{5, 5}, []int{5, 5}, reverse, zeronegs, 1)
-	convolution(imagename, "dilation77like15x15,", edge33, stride, []int{7, 7}, []int{7, 7}, reverse, zeronegs, 1)
+	convolution(imagename, "dilation77like15x15,", edge33, stride, []int{7, 7}, []int{7, 7}, reverse, zeronegs, conv, 1)
 }
 
 //	convertjpgtobmp("spideronclover256.jpg")
@@ -149,7 +168,7 @@ func makeedge(y, x int) [][]float64 {
 	return edge
 }
 
-func convolution(imagelocation string, newname string, k [][]float64, s, d, p []int, reverse, zeronegatives bool, threads int) {
+func convolution(imagelocation string, newname string, k [][]float64, s, d, p []int, reverse, zeronegatives bool, conv bool, threads int) {
 
 	newname = newname + createname(imagelocation, k, s, d, p, reverse, zeronegatives)
 
@@ -183,10 +202,18 @@ func convolution(imagelocation string, newname string, k [][]float64, s, d, p []
 	}
 	var convimg image.Image
 	if reverse {
-		convimg = kernel.InverseConvolution(img, k, s, d, p, zeronegatives)
+		if conv {
+			convimg = kernel.InverseConvolution(img, k, s, d, p, zeronegatives)
+		} else {
+			convimg = kernel.InverseCCorelation(img, k, s, d, p, zeronegatives)
+		}
 
 	} else {
-		convimg = kernel.Convolution(img, k, s, d, p, zeronegatives, threads)
+		if conv {
+			convimg = kernel.Convolution(img, k, s, d, p, zeronegatives, threads)
+		} else {
+			convimg = kernel.CrossCorelation(img, k, s, d, p, zeronegatives, threads)
+		}
 
 	}
 
