@@ -6,8 +6,8 @@ import (
 	"sync"
 )
 
-//Convolution does the convolution operation per channel on an image. If the kernel is small and picture is small then don't bother setting the threads to big.
-func Convolution(img image.Image, kernel [][]float64, stride, dilation, padding []int, zeronegatives bool, threads int) image.Image {
+//Convolution does the convolution operation per channel on an image. threads will parallelize the convolution
+func Convolution(img image.Image, kernel [][]float64, stride, dilation, padding []int, zeronegatives bool, threads bool) image.Image {
 	if len(stride) != 2 || len(dilation) != 2 || len(padding) != 2 {
 		return nil
 	}
@@ -23,15 +23,57 @@ func Convolution(img image.Image, kernel [][]float64, stride, dilation, padding 
 		op[i] = output(x[i], w[i], stride[i], dilation[i], padding[i])
 	}
 	arrayout := create3darray(op[0], op[1], 3)
-	var wg sync.WaitGroup
-	for oh, xhps := 0, -padding[0]; oh < op[0]; oh, xhps = oh+1, xhps+stride[0] {
+	if threads {
+		var wg sync.WaitGroup
+		for oh, xhps := 0, -padding[0]; oh < op[0]; oh, xhps = oh+1, xhps+stride[0] {
 
-		for ow, xwps := 0, -padding[1]; ow < op[1]; ow, xwps = ow+1, xwps+stride[1] {
+			for ow, xwps := 0, -padding[1]; ow < op[1]; ow, xwps = ow+1, xwps+stride[1] {
 
-			d1 := dilation[1]
-			d0 := dilation[0]
-			wg.Add(1)
-			go func(oh, ow, xhps, xwps, d0, d1 int) {
+				d1 := dilation[1]
+				d0 := dilation[0]
+				wg.Add(1)
+				go func(oh, ow, xhps, xwps, d0, d1 int) {
+					var (
+						sr float64
+						sg float64
+						sb float64
+					)
+					khlast := len(kernel) - 1
+					for kh := 0; kh < len(kernel); kh++ {
+						xhpsd := kh*d0 + xhps
+						kwlast := len(kernel[kh]) - 1
+						for kw := 0; kw < len(kernel[kh]); kw++ {
+							xwpsd := kw*d1 + xwps
+							if xwpsd >= 0 && xwpsd < x[1] && xhpsd >= 0 && xhpsd < x[0] {
+								r, g, b, _ := img.At(xwpsd, xhpsd).RGBA()
+								kval := kernel[khlast-kh][kwlast-kw]
+								sr += (float64)(r) * kval
+								sg += (float64)(g) * kval
+								sb += (float64)(b) * kval
+							}
+
+						}
+
+					}
+
+					arrayout[oh][ow][0] = sr
+					arrayout[oh][ow][1] = sg
+					arrayout[oh][ow][2] = sb
+					wg.Done()
+				}(oh, ow, xhps, xwps, d0, d1)
+
+			}
+
+		}
+		wg.Wait()
+	} else {
+		for oh, xhps := 0, -padding[0]; oh < op[0]; oh, xhps = oh+1, xhps+stride[0] {
+
+			for ow, xwps := 0, -padding[1]; ow < op[1]; ow, xwps = ow+1, xwps+stride[1] {
+
+				d1 := dilation[1]
+				d0 := dilation[0]
+
 				var (
 					sr float64
 					sg float64
@@ -58,16 +100,14 @@ func Convolution(img image.Image, kernel [][]float64, stride, dilation, padding 
 				arrayout[oh][ow][0] = sr
 				arrayout[oh][ow][1] = sg
 				arrayout[oh][ow][2] = sb
-				wg.Done()
-			}(oh, ow, xhps, xwps, d0, d1)
-			if ow%threads == threads-1 {
-				wg.Wait()
-			}
-		}
-		wg.Wait()
 
+			}
+
+		}
 	}
-	return array3dtoimg(arrayout, zeronegatives)
+	newimage := array3dtoimg(arrayout, zeronegatives)
+	arrayout = nil
+	return newimage
 }
 
 //InverseConvolution does reverse convolution operation per channel on an image.
@@ -193,8 +233,8 @@ counter++
 }
 */
 
-//Convolution does the convolution operation per channel on an image. If the kernel is small and picture is small then don't bother setting the threads to big.
-func CrossCorelation(img image.Image, kernel [][]float64, stride, dilation, padding []int, zeronegatives bool, threads int) image.Image {
+//CrossCorelation does the convolution operation per channel on an image. If the kernel is small and picture is small then don't bother setting the threads to big.
+func CrossCorelation(img image.Image, kernel [][]float64, stride, dilation, padding []int, zeronegatives bool, threads bool) image.Image {
 	if len(stride) != 2 || len(dilation) != 2 || len(padding) != 2 {
 		return nil
 	}
@@ -211,15 +251,57 @@ func CrossCorelation(img image.Image, kernel [][]float64, stride, dilation, padd
 	}
 
 	arrayout := create3darray(op[0], op[1], 3)
-	var wg sync.WaitGroup
-	for oh, xhps := 0, -padding[0]; oh < op[0]; oh, xhps = oh+1, xhps+stride[0] {
+	if threads {
 
-		for ow, xwps := 0, -padding[1]; ow < op[1]; ow, xwps = ow+1, xwps+stride[1] {
+		var wg sync.WaitGroup
+		for oh, xhps := 0, -padding[0]; oh < op[0]; oh, xhps = oh+1, xhps+stride[0] {
 
-			d1 := dilation[1]
-			d0 := dilation[0]
-			wg.Add(1)
-			go func(oh, ow, xhps, xwps, d0, d1 int) {
+			for ow, xwps := 0, -padding[1]; ow < op[1]; ow, xwps = ow+1, xwps+stride[1] {
+
+				d1 := dilation[1]
+				d0 := dilation[0]
+				wg.Add(1)
+				go func(oh, ow, xhps, xwps, d0, d1 int) {
+					var (
+						sr float64
+						sg float64
+						sb float64
+					)
+					for kh := 0; kh < len(kernel); kh++ {
+						xhpsd := kh*d0 + xhps
+						for kw := 0; kw < len(kernel[kh]); kw++ {
+							xwpsd := kw*d1 + xwps
+							if xwpsd >= 0 && xwpsd < x[1] && xhpsd >= 0 && xhpsd < x[0] {
+								r, g, b, _ := img.At(xwpsd, xhpsd).RGBA()
+
+								sr += (float64)(r) * kernel[kh][kw]
+								sg += (float64)(g) * kernel[kh][kw]
+								sb += (float64)(b) * kernel[kh][kw]
+							}
+
+						}
+
+					}
+
+					arrayout[oh][ow][0] = sr
+					arrayout[oh][ow][1] = sg
+					arrayout[oh][ow][2] = sb
+					wg.Done()
+				}(oh, ow, xhps, xwps, d0, d1)
+
+			}
+
+		}
+		wg.Wait()
+	} else {
+
+		for oh, xhps := 0, -padding[0]; oh < op[0]; oh, xhps = oh+1, xhps+stride[0] {
+
+			for ow, xwps := 0, -padding[1]; ow < op[1]; ow, xwps = ow+1, xwps+stride[1] {
+
+				d1 := dilation[1]
+				d0 := dilation[0]
+
 				var (
 					sr float64
 					sg float64
@@ -244,16 +326,14 @@ func CrossCorelation(img image.Image, kernel [][]float64, stride, dilation, padd
 				arrayout[oh][ow][0] = sr
 				arrayout[oh][ow][1] = sg
 				arrayout[oh][ow][2] = sb
-				wg.Done()
-			}(oh, ow, xhps, xwps, d0, d1)
-			if ow%threads == threads-1 {
-				wg.Wait()
-			}
-		}
-		wg.Wait()
 
+			}
+
+		}
 	}
-	return array3dtoimg(arrayout, zeronegatives)
+	newimage := array3dtoimg(arrayout, zeronegatives)
+	arrayout = nil
+	return newimage
 }
 
 func array3dtoimg(input [][][]float64, zeronegatives bool) image.Image {

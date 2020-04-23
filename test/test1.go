@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"../../kernel"
+	"github.com/dereklstinson/kernel"
 	"golang.org/x/image/bmp"
 )
 
@@ -75,10 +75,10 @@ var lye = [][]float64{
 
 func main() {
 	//convertjpgtobmp("playground.jpg")
-	convvscroswithreverse("playground.bmp", lxe, false, true, 1)
+	convvscroswithreverse("playground.bmp", lxe, false, true, true)
 }
 
-func convvscroswithreverse(imagename string, karray [][]float64, reverse bool, zeronegs bool, threads int) {
+func convvscroswithreverse(imagename string, karray [][]float64, reverse bool, zeronegs bool, threads bool) {
 
 	convolution(imagename, "cvexample", karray, []int{1, 1}, []int{1, 1}, []int{1, 1}, false, zeronegs, true, threads)
 	convolution(imagename, "ccexample", karray, []int{1, 1}, []int{1, 1}, []int{1, 1}, false, zeronegs, false, threads)
@@ -92,7 +92,7 @@ func getconvpics(imagename string) {
 	reverse := false
 	zeronegs := false
 	conv := false
-	threads := 16
+	var threads = false
 	/*
 		x := 7
 		y := 7
@@ -106,10 +106,10 @@ func getconvpics(imagename string) {
 	//	convolution(imagename, "edge99", edge99, stride, []int{1, 1}, []int{4, 4}, reverse, zeronegs, threads)
 	//convolution(imagename, "edge12x12", edge12x12, stride, []int{1, 1}, []int{5, 5}, reverse, zeronegs, threads)
 	convolution(imagename, "edge15x15", edge15x15, stride, []int{1, 1}, []int{7, 7}, reverse, zeronegs, conv, threads)
-	convolution(imagename, "dilation11like33", edge33, stride, []int{1, 1}, []int{1, 1}, reverse, zeronegs, conv, 1)
+	convolution(imagename, "dilation11like33", edge33, stride, []int{1, 1}, []int{1, 1}, reverse, zeronegs, conv, false)
 	//convolution(imagename, "dilation44,like99,", edge33, stride, []int{4, 4}, []int{4, 4}, reverse, zeronegs, 1)
 	//	convolution(imagename, "dilation55,like11x11,", edge33, stride, []int{5, 5}, []int{5, 5}, reverse, zeronegs, 1)
-	convolution(imagename, "dilation77like15x15,", edge33, stride, []int{7, 7}, []int{7, 7}, reverse, zeronegs, conv, 1)
+	convolution(imagename, "dilation77like15x15,", edge33, stride, []int{7, 7}, []int{7, 7}, reverse, zeronegs, conv, false)
 }
 
 //	convertjpgtobmp("spideronclover256.jpg")
@@ -168,7 +168,7 @@ func makeedge(y, x int) [][]float64 {
 	return edge
 }
 
-func convolution(imagelocation string, newname string, k [][]float64, s, d, p []int, reverse, zeronegatives bool, conv bool, threads int) {
+func convolution(imagelocation string, newname string, k [][]float64, s, d, p []int, reverse, zeronegatives bool, conv bool, threads bool) {
 
 	newname = newname + createname(imagelocation, k, s, d, p, reverse, zeronegatives)
 
