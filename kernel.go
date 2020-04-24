@@ -344,23 +344,40 @@ func array3dtoimg(input [][][]float64, zeronegatives bool) image.Image {
 		min = 99999999.0
 		max = -99999999.0
 	)
-	for i := 0; i < y; i++ {
-		for j := 0; j < x; j++ {
-			for k := 0; k < c; k++ {
-				if zeronegatives {
+	if zeronegatives {
+		for i := 0; i < y; i++ {
+			for j := 0; j < x; j++ {
+				for k := 0; k < c; k++ {
+
 					if input[i][j][k] < 0 {
 						input[i][j][k] = 0
 					}
+
+					if min > input[i][j][k] {
+						min = input[i][j][k]
+					}
+					if max < input[i][j][k] {
+						max = input[i][j][k]
+					}
 				}
-				if min > input[i][j][k] {
-					min = input[i][j][k]
-				}
-				if max < input[i][j][k] {
-					max = input[i][j][k]
+			}
+		}
+	} else {
+		for i := 0; i < y; i++ {
+			for j := 0; j < x; j++ {
+				for k := 0; k < c; k++ {
+
+					if min > input[i][j][k] {
+						min = input[i][j][k]
+					}
+					if max < input[i][j][k] {
+						max = input[i][j][k]
+					}
 				}
 			}
 		}
 	}
+
 	if min < 0 {
 		max -= min
 		for i := 0; i < y; i++ {
@@ -373,13 +390,29 @@ func array3dtoimg(input [][][]float64, zeronegatives bool) image.Image {
 			}
 		}
 	}
-	if max > 255 {
-		for i := 0; i < y; i++ {
-			for j := 0; j < x; j++ {
-				for k := 0; k < c; k++ {
+	if zeronegatives {
+		if max > 255 {
+			for i := 0; i < y; i++ {
+				for j := 0; j < x; j++ {
+					for k := 0; k < c; k++ {
+						if input[i][j][k] > 255 {
+							input[i][j][k] = 255
+						}
+						//	input[i][j][k] = (input[i][j][k] * 255) / max
 
-					input[i][j][k] = (input[i][j][k] * 255) / max
+					}
+				}
+			}
+		}
+	} else {
+		if max > 255 {
+			for i := 0; i < y; i++ {
+				for j := 0; j < x; j++ {
+					for k := 0; k < c; k++ {
 
+						input[i][j][k] = (input[i][j][k] * 255) / max
+
+					}
 				}
 			}
 		}
